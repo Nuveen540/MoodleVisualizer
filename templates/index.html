@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Event Visualizer by Dulith Polpitiya</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        #modules {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .module {
+            width: 220px;
+            height: 220px;
+            border: 2px solid black;
+            background-color: mediumaquamarine;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .module-title {
+            padding: 8px;
+            background-color: #dddddd;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            color: white;
+            font-size: 10px;
+            text-align: center;
+            line-height: 20px;
+            position: absolute;
+            transition: left 0.5s, top 0.5s;
+        }
+
+        #controls {
+            margin: 20px 0;
+        }
+
+        button, select {
+            padding: 8px 14px;
+            margin-right: 5px;
+        }
+
+        #eventInformation {
+            margin: 15px 0;
+            font-weight: bold;
+        }
+
+    </style>
+</head>
+
+<body>
+<h1 style="text-align: center">Event Visualizer</h1>
+<h3 style="text-align: center">Created by Dulith Polpitiya</h3>
+
+<form method="POST" enctype="multipart/form-data">
+    <p>Events File</p>
+    <input type="file" name="eventsFile" accept=".csv" required>
+
+    <p>Results File (optional)</p>
+    <input type="file" name="resultsFile" accept=".csv">
+    <br><br>
+
+    <button type="submit">Upload</button>
+</form>
+
+{% if events %}
+
+<div id="controls">
+    <button id="playButton" onclick="playEvents()">Play</button>
+    <button id="pauseButton" onclick="pauseEvents()">Pause</button>
+    <button id="restartButton" onclick="restartEvents()">Restart</button>
+
+    <label for="speed">Speed:</label>
+    <select id="speed" onchange="changeSpeed()">
+        <option value="2000">Slow</option>
+        <option value="1000">Normal</option>
+        <option value="500">Fast</option>
+        <option value="200">Super fast</option>
+        <option value="100">Ultra fast</option>
+        <option value="10">Hyper fast</option>
+    </select>
+
+    <label for="eventNumber">Go to event:</label>
+    <input id="eventNumber" type="number" min="0" placeholder="Event number">
+    <button onclick="goToEvent()">Enter</button>
+
+    <label>
+        <input type="checkbox" id="showGreen" checked onchange="updateVisibility()">
+        Top 25%
+    </label>
+    <label>
+        <input type="checkbox" id="showYellow" checked onchange="updateVisibility()">
+        Mid 50%
+    </label>
+    <label>
+        <input type="checkbox" id="showRed" checked onchange="updateVisibility()">
+        Bottom 25%
+    </label>
+</div>
+
+<div id="eventInformation">
+    Press 'Play' to begin.
+</div>
+
+<div id="modules"></div>
+<script>
+    const events = {{ events | tojson }};
+    const results = {{ results | tojson if results else "null" }};
+    const modulesContainer = document.getElementById("modules")
+    const eventInformation = document.getElementById("eventInformation")
+    const moduleBoxes = {};
+    const userDots = {};
+    const userColors = {};
+
+    let timer = null;
+    let eventIndex = 0;
+    let playbackSpeed = 1000;
+
+
+    // assign colors to each user dot
+    if (results == null) {
+        // no results file provided, so every user is cyan
+        events.forEach(event => {
+           userColors[event.user_id] = "cyan";
+        });
+    }
+    else {
+        // sort students by mark
+        const students = [...results];
+        students.sort((a, b) => Number(b["Marks (100)"]) - Number(a["Marks (100)"]));
+        const n = students.length;
+        const top25 = Math.floor(n * 0.25);
+        // by default, all students are yellow
+        students.forEach(student => {
+            userColors[student.user_id] = "yellow";
+        });
+        // top quartile students are green
+        for (let i = 0; i < top25; i++) {
+            userColors[students[i].user_id] = "green";
+        }
+        // bottom quartile students are red
+        for (let i = n - top25; i < n; i++) {
+            userColors[students[i].user_id] = "red";
+        }
+        // anyone who appears in the event log but not in the results file is cyan
+        events.forEach(event => {
+            if (!(event.user_id in userColors)) {
+                userColors[event.user_id] = "cyan";
+            }
+        });
+    }
+
+    // create module boxes
+    events.forEach(event => {
+        const moduleName = event["Event context"];
+        if (!moduleBoxes[moduleName]) {
+            const box = document.createElement("div");
+            box.className = "module";
+            const title = document.createElement("div");
+            title.className = "module-title";
+            title.textContent = moduleName;
+            box.appendChild(title);
+            modulesContainer.appendChild(box);
+            moduleBoxes[moduleName] = box;
+        }
+    });
+    // play the events
+    function playEvents() {
+        // prevent multiple timers from running
+        if (timer != null) {
+            return;
+        }
+        // pause when playback has finished
+        if (eventIndex >= events.length) {
+            clearTimeout(timer);
+            timer = null;
+        }
+        nextEvent();
+    }
+    // process each event one at a time
+    function nextEvent() {
+        if (eventIndex >= events.length) {
+            timer = null;
+            eventInformation.textContent = "Playback complete.";
+            return;
+        }
+        const event = events[eventIndex];
+        const userId = event["user_id"];
+        const moduleName = event["Event context"];
+        const eventTime = event["Time"];
+        // create user if it does not exist
+        if (!userDots[userId]) {
+            const dot = document.createElement("div");
+            dot.className = "dot";
+            dot.style.backgroundColor = userColors[userId];
+            dot.dataset.color = userColors[userId];
+            dot.textContent = userId;
+            dot.title = userId;
+            userDots[userId] = dot;
+            updateVisibility();
+        }
+        const dot = userDots[userId]
+        // move user to its next module
+        const destination = moduleBoxes[moduleName];
+        destination.appendChild(dot);
+        // give the dot a position inside the module
+        dot.style.left = 10 + Math.random() * 160 + "px";
+        dot.style.top = 50 + Math.random() * 140 + "px";
+        // update event information
+        eventInformation.textContent =
+            "Event " + (eventIndex + 1) +
+            " of " + events.length +
+            ": " + userId +
+            " accesses " + moduleName +
+            " at " + eventTime;
+        // update index and timer
+        eventIndex++
+        timer = setTimeout(nextEvent, playbackSpeed);
+    }
+    // pause button
+    function pauseEvents() {
+        if (timer != null) {
+            clearTimeout(timer);
+            timer = null;
+            // update event text
+        const currentEvent = events[eventIndex]
+        eventInformation.textContent =
+            "Paused. Event " + eventIndex +
+            " of " + events.length +
+            ": " + currentEvent["user_id"] +
+            " accesses " + currentEvent["Event context"] +
+            " at " + currentEvent["Time"];
+        }
+    }
+    // restart button
+    function restartEvents() {
+        pauseEvents();
+        eventIndex = 0;
+        // remove all dots
+        Object.values(userDots).forEach(dot => {
+            dot.remove();
+        });
+        eventInformation.textContent = "Press 'Play' to begin."
+    }
+    // change speed
+    function changeSpeed() {
+        const speedMenu = document.getElementById("speed");
+        playbackSpeed = Number(speedMenu.value);
+        // if playback is playing, restart the timer using the newly selected speed
+        if (timer != null) {
+            clearTimeout(timer);
+            timer = setTimeout(nextEvent, playbackSpeed);
+        }
+    }
+    // skip to event
+    function goToEvent() {
+        // pause
+        pauseEvents();
+        const input = document.getElementById("eventNumber")
+        let targetEvent = Number(input.value);
+
+        if (!Number.isFinite(targetEvent)) {
+            eventInformation.textContent = "Please enter a valid number.";
+            return;
+        }
+        // if number is negative, set to 0
+        if (targetEvent < 0) {
+            targetEvent = 0;
+        }
+        // if number is beyond the number of events, go to last event
+        if (targetEvent > events.length) {
+            targetEvent = events.length
+        }
+        // delete every dot
+        Object.values(userDots).forEach(dot => {
+            dot.remove();
+        });
+        // replay every event until the requested event is reached
+        for (let i = 0; i < targetEvent; i++) {
+            const event = events[i]
+            const userId = event["user_id"];
+            const moduleName = event["Event context"];
+            // create user if it does not exist
+            if (!userDots[userId]) {
+                const dot = document.createElement("div");
+                dot.className = "dot";
+                dot.style.backgroundColor = userColors[userId];
+                dot.dataset.color = userColors[userId];
+                dot.textContent = userId;
+                dot.title = userId;
+                userDots[userId] = dot;
+                updateVisibility();
+            }
+            const dot = userDots[userId]
+            // move user to its next module
+            const destination = moduleBoxes[moduleName];
+            destination.appendChild(dot);
+            // give the dot a position inside the module
+            dot.style.left = 10 + Math.random() * 160 + "px";
+            dot.style.top = 50 + Math.random() * 140 + "px";
+        }
+        // point event index to the current index
+        eventIndex = targetEvent;
+        input.value = targetEvent;
+        // update event text
+        const currentEvent = events[targetEvent - 1]
+        eventInformation.textContent =
+            "Skipped to event " + targetEvent +
+            " of " + events.length +
+            ": " + currentEvent["user_id"] +
+            " accesses " + currentEvent["Event context"] +
+            " at " + currentEvent["Time"];
+    }
+    // show and hide dots
+    function updateVisibility() {
+        const showGreen = document.getElementById("showGreen").checked;
+        const showYellow = document.getElementById("showYellow").checked;
+        const showRed = document.getElementById("showRed").checked;
+        Object.values(userDots).forEach(dot => {
+            const color = dot.dataset.color;
+            let visible = true;
+            if (color === "green") {
+                visible = showGreen;
+            }
+            else if (color === "yellow") {
+                visible = showYellow;
+            }
+            else if (color === "red") {
+                visible = showRed;
+            }
+            // cyan dots (staff and TAs) will always be visible
+            dot.style.display = visible ? "block" : "none";
+        });
+    }
+</script>
+{% endif %}
+</body>
+</html>
