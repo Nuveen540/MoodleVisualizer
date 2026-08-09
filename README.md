@@ -30,7 +30,7 @@ The various boxes you see represent the different **course modules**. A module c
 
 But, wait a minute! What are these small dots? Each dot represents a **user**. Anyone who interacts with the course website will be recognized as a user: mainly students, but also instructors, TAs, and admins. The dots also display their username.
 
-![](images/Picture4.png)
+![](images/Picture6.png)
 
 Dots can have different colors, depending on the student's final grade.
 * Students who received the top 25% of scores are denoted with **green dots**.
