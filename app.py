@@ -1,3 +1,13 @@
+"""
+Moodle Event Visualizer
+Created by Dulith Polpitiya
+August 7, 2026
+
+This program receives Moodle log files as an input
+and displays a simple visualization that showcases how
+users interact with the website and their course.
+"""
+
 from flask import Flask, render_template, request
 import pandas as pd
 
